@@ -98,129 +98,28 @@ export default function ProductComparisonTool() {
       )
     }
 
-    // Detailed tone instructions
-    let toneInstructions = ""
-    switch (settings.tone) {
-      case "neutral":
-        toneInstructions = `
-**Tone Guidelines:**
-- Maintain complete objectivity and balance
-- Present facts without bias or preference
-- Use neutral language: "offers", "provides", "includes" rather than "excels" or "lacks"
-- Avoid superlatives and emotional language
-- Present both strengths and weaknesses equally`
-        break
-      case "detailed":
-        toneInstructions = `
-**Tone Guidelines:**
-- Provide comprehensive technical specifications and details
-- Include specific version numbers, API capabilities, and technical limitations
-- Use precise technical terminology and industry jargon
-- Dive deep into architecture, integrations, and implementation details
-- Include performance metrics, security protocols, and compliance standards`
-        break
-      case "concise":
-        toneInstructions = `
-**Tone Guidelines:**
-- Keep explanations brief and to the point
-- Use bullet points and short sentences
-- Focus on key differentiators only
-- Limit each section to 2-3 main points
-- Prioritize actionable insights over detailed explanations`
-        break
-      case "business":
-        toneInstructions = `
-**Tone Guidelines:**
-- Focus on ROI, cost-effectiveness, and business impact
-- Emphasize scalability, enterprise features, and team collaboration
-- Include total cost of ownership and implementation considerations
-- Address decision-maker concerns: security, compliance, support
-- Use business terminology: efficiency, productivity, competitive advantage`
-        break
-      case "consumer":
-        toneInstructions = `
-**Tone Guidelines:**
-- Use friendly, accessible language avoiding technical jargon
-- Focus on user experience, ease of use, and everyday benefits
-- Emphasize value for money and practical applications
-- Include learning curve and setup simplicity
-- Address common user pain points and how each product solves them`
-        break
-    }
-
-    // Detailed format instructions
-    let formatInstructions = ""
-    switch (settings.format) {
-      case "markdown":
-        formatInstructions = `
-**Format Requirements:**
-- Use proper Markdown syntax with headers (##, ###)
-- Create comparison tables using | syntax
-- Use bullet points (-) and numbered lists (1.)
-- Include code blocks for technical details when relevant
-- Use **bold** for key points and *italics* for emphasis`
-        break
-      case "structured":
-        formatInstructions = `
-**Format Requirements:**
-- Organize content in clear, numbered sections
-- Use consistent paragraph structure with topic sentences
-- Include summary boxes for key takeaways
-- Use indentation and spacing for hierarchy
-- End each section with a brief conclusion`
-        break
-      case "table":
-        formatInstructions = `
-**Format Requirements:**
-- Present ALL comparisons in table format
-- Create separate tables for each major category
-- Use consistent column headers: Feature | ${productA.name} | ${productB.name}
-- Include rating symbols (★★★★☆) or checkmarks (✓/✗) where appropriate
-- Add a summary comparison table at the end`
-        break
-      case "report":
-        formatInstructions = `
-**Format Requirements:**
-- Structure as a formal business report with executive summary
-- Include methodology section explaining comparison criteria
-- Use professional headings and subheadings
-- Add conclusions and recommendations section
-- Include appendices for detailed specifications`
-        break
-    }
-
-    // Enhanced layout instructions
     let layoutInstructions = ""
-    switch (settings.layout) {
-      case "side-by-side":
-        layoutInstructions = `
+    if (settings.layout === "side-by-side") {
+      layoutInstructions = `
 **Layout Requirements:**
-- Create side-by-side comparison tables for EVERY category
-- Use consistent two-column format: ${productA.name} | ${productB.name}
-- Include direct feature-to-feature comparisons in each row
-- Add visual indicators (✓, ✗, ★) for quick scanning
-- Ensure parallel structure - same aspects compared for both products
-- Include "Winner" or "Better For" indicators in each section`
-        break
-      case "matrix":
-        layoutInstructions = `
+- Create a side-by-side comparison table format
+- Use two columns: one for ${productA.name} and one for ${productB.name}
+- Each row should represent a comparison category
+- Include clear headers and organized sections
+- Use consistent formatting for easy scanning`
+    } else if (settings.layout === "matrix") {
+      layoutInstructions = `
 **Layout Requirements:**
-- Create comprehensive feature matrices with products as columns
-- Use symbols: ✓ (full support), ◐ (partial), ✗ (not available), ★★★ (ratings)
-- Group related features into logical categories
-- Include scoring summary at the bottom of each matrix
-- Add color-coding suggestions: Green (advantage), Yellow (neutral), Red (disadvantage)
-- Create an overall score matrix summarizing all categories`
-        break
-      case "sequential":
-        layoutInstructions = `
+- Create a feature matrix with products as columns
+- Use checkmarks (✓), X marks (✗), or ratings for quick comparison
+- Group related features together
+- Include a summary row for each major category`
+    } else {
+      layoutInstructions = `
 **Layout Requirements:**
-- Analyze each category by discussing both products together
-- Use "Product A vs Product B" structure within each section
-- Include direct comparisons and contrasts in the same paragraph
-- End each section with a clear winner or "depends on use case" conclusion
-- Use transition phrases: "In contrast", "Similarly", "However", "On the other hand"`
-        break
+- Analyze each product sequentially within each category
+- Provide direct comparisons and contrasts
+- Use clear headings and subheadings for organization`
     }
 
     const prompt = `You are a professional product comparison analyst. Create a comprehensive ${layoutDescription.toLowerCase()} between these two products:
@@ -233,41 +132,27 @@ export default function ProductComparisonTool() {
 - **Tone:** ${toneDescription}
 - **Format:** ${formatDescription}
 - **Layout:** ${layoutDescription}
-
-${toneInstructions}
-
-${formatInstructions}
-
 ${layoutInstructions}
 
 **Comparison Categories:**
 ${allSections.map((section, index) => `${index + 1}. ${section}`).join("\n")}
 
-**Specific Guidelines:**
-- Research current, accurate information about both products
-- Include specific examples, features, and data points where possible
-- Provide pricing information with specific numbers when available
-- Address different user personas and use cases explicitly
-- Include screenshots or feature descriptions for UI/UX comparisons
-- Mention recent updates or changes to either product
-- Consider integration capabilities and ecosystem compatibility
-- Include user reviews sentiment and common feedback themes
+**Guidelines:**
+- Provide factual, well-researched information
+- Include specific examples, features, and data points
+- Maintain objectivity while highlighting key differentiators
+- Consider pricing, features, usability, and target audience
+- Address different user personas and use cases
+- Include actionable insights for decision-making
+- Use tables, bullet points, and clear formatting for readability
 
 **Expected Output Structure:**
-1. Executive Summary (2-3 sentences highlighting key differences)
-2. Quick Comparison Overview (key specs side-by-side)
-3. Detailed analysis following your specified format and layout
-4. Use Case Recommendations (who should choose which product)
-5. Final Verdict with specific scenarios
+1. Executive Summary (side-by-side overview)
+2. Detailed comparison table/matrix for each category
+3. Key differentiators and unique selling points
+4. Recommendation based on different use cases
 
-**Quality Standards:**
-- Ensure factual accuracy and cite sources when possible
-- Maintain consistency in comparison criteria across all sections
-- Provide actionable insights that help with decision-making
-- Include both current state and future roadmap considerations
-- Address potential deal-breakers or must-have features
-
-Please follow these instructions precisely to create a comparison that matches the specified tone, format, and layout requirements.`
+Please ensure the comparison is thorough, balanced, and presented in a format that makes it easy to compare the products at a glance.`
 
     return prompt
   }
