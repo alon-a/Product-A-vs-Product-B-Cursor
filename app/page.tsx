@@ -137,14 +137,10 @@ ${layoutInstructions}
 **Comparison Categories:**
 ${allSections.map((section, index) => `${index + 1}. ${section}`).join("\n")}
 
-**Guidelines:**
-- Provide factual, well-researched information
-- Include specific examples, features, and data points
-- Maintain objectivity while highlighting key differentiators
-- Consider pricing, features, usability, and target audience
-- Address different user personas and use cases
-- Include actionable insights for decision-making
-- Use tables, bullet points, and clear formatting for readability
+**Specific Guidelines:**
+${generateDynamicGuidelines(allSections)
+  .map((guideline) => `- ${guideline}`)
+  .join("\n")}
 
 **Expected Output Structure:**
 1. Executive Summary (side-by-side overview)
@@ -155,6 +151,64 @@ ${allSections.map((section, index) => `${index + 1}. ${section}`).join("\n")}
 Please ensure the comparison is thorough, balanced, and presented in a format that makes it easy to compare the products at a glance.`
 
     return prompt
+
+    // After the allSections array is built, add this function to generate dynamic guidelines:
+    function generateDynamicGuidelines(sections: string[]) {
+      const guidelines: string[] = [
+        "Research current, accurate information about both products",
+        "Include specific examples and data points where possible",
+        "Maintain objectivity while highlighting key differentiators",
+      ]
+
+      // Add section-specific guidelines based on selected sections
+      if (sections.includes("Features & Functionality")) {
+        guidelines.push("Provide detailed feature comparisons with specific capabilities and limitations")
+      }
+
+      if (sections.includes("Pricing & Plans")) {
+        guidelines.push("Include specific pricing numbers, plan tiers, and total cost of ownership")
+      }
+
+      if (sections.includes("User Experience & Interface")) {
+        guidelines.push("Include screenshots or detailed UI/UX descriptions and usability comparisons")
+      }
+
+      if (sections.includes("Integrations & Compatibility")) {
+        guidelines.push("Consider integration capabilities and ecosystem compatibility")
+      }
+
+      if (sections.includes("Performance & Reliability")) {
+        guidelines.push("Include performance metrics, uptime statistics, and reliability data")
+      }
+
+      if (sections.includes("Security & Privacy")) {
+        guidelines.push("Address security protocols, compliance standards, and privacy policies")
+      }
+
+      if (sections.includes("Customer Support")) {
+        guidelines.push("Include support channel availability, response times, and user satisfaction")
+      }
+
+      if (sections.includes("Pros & Cons")) {
+        guidelines.push("Present balanced advantages and disadvantages for each product")
+      }
+
+      if (sections.includes("Ideal Use Cases")) {
+        guidelines.push("Address different user personas and specific use case scenarios")
+      }
+
+      if (sections.includes("Final Recommendation")) {
+        guidelines.push("Provide actionable decision-making guidance based on different needs")
+      }
+
+      // Add guidelines for custom sections
+      const customSections = settings.customSections.trim()
+      if (customSections) {
+        guidelines.push("Address the custom comparison categories with relevant details and examples")
+      }
+
+      return guidelines
+    }
   }
 
   const generateComparisonPreview = () => {
