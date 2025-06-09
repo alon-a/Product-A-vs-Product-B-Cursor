@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -11,8 +11,11 @@ import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Copy, Download, RefreshCw, Sparkles, FileText, Table } from "lucide-react"
+import { Copy, Download, RefreshCw, Sparkles, FileText, Table, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from '@/components/auth/AuthProvider'
+import { LoginButton } from '@/components/auth/LoginButton'
+import ReactMarkdown from "react-markdown"
 
 interface Product {
   name: string
@@ -75,6 +78,67 @@ export default function ProductComparisonTool() {
   const [generatedPrompt, setGeneratedPrompt] = useState("")
   const [comparisonPreview, setComparisonPreview] = useState("")
   const { toast } = useToast()
+  const { isAuthenticated, user, logout, authError } = useAuth()
+  const [productAError, setProductAError] = useState<string | null>(null)
+  const [productBError, setProductBError] = useState<string | null>(null)
+  const [touchedA, setTouchedA] = useState(false)
+  const [touchedB, setTouchedB] = useState(false)
+  const [productAUrlError, setProductAUrlError] = useState<string | null>(null)
+  const [productBUrlError, setProductBUrlError] = useState<string | null>(null)
+  const [touchedAUrl, setTouchedAUrl] = useState(false)
+  const [touchedBUrl, setTouchedBUrl] = useState(false)
+  const [formatError, setFormatError] = useState<string | null>(null)
+  const [sectionsError, setSectionsError] = useState<string | null>(null)
+  const [touchedFormat, setTouchedFormat] = useState(false)
+  const [touchedSections, setTouchedSections] = useState(false)
+  const [activeTab, setActiveTab] = useState("products")
+  const [comparisonResult, setComparisonResult] = useState<string | null>(null)
+  const [compareLoading, setCompareLoading] = useState(false)
+  const [compareError, setCompareError] = useState<string | null>(null)
+
+  // Auto-save and recovery using localStorage
+  const AUTO_SAVE_KEY = 'product-comparison-autosave-v1';
+  const isFirstLoad = useRef(true);
+
+  // Restore state on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(AUTO_SAVE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.productA) setProductA(parsed.productA);
+        if (parsed.productB) setProductB(parsed.productB);
+        if (parsed.settings) setSettings(parsed.settings);
+      } catch {}
+    }
+    isFirstLoad.current = false;
+  }, []);
+
+  // Auto-save on changes
+  useEffect(() => {
+    if (isFirstLoad.current) return;
+    localStorage.setItem(
+      AUTO_SAVE_KEY,
+      JSON.stringify({ productA, productB, settings })
+    );
+  }, [productA, productB, settings]);
+
+  // Clear saved data
+  const clearAutoSave = () => {
+    localStorage.removeItem(AUTO_SAVE_KEY);
+    setProductA({ name: "", url: "", description: "" });
+    setProductB({ name: "", url: "", description: "" });
+    setSettings({
+      tone: "neutral",
+      format: "markdown",
+      layout: "side-by-side",
+      sections: defaultSections,
+      customSections: "",
+    });
+    setGeneratedPrompt("");
+    setComparisonPreview("");
+    toast({ title: "Auto-save cleared", description: "All saved data has been reset." });
+  };
 
   const handleSectionToggle = (section: string, checked: boolean) => {
     setSettings((prev) => ({
@@ -82,6 +146,40 @@ export default function ProductComparisonTool() {
       sections: checked ? [...prev.sections, section] : prev.sections.filter((s) => s !== section),
     }))
   }
+
+  const validateProductA = (name: string) => {
+    if (!name.trim()) return 'Product A name is required.'
+    return null
+  }
+
+  const validateProductB = (name: string) => {
+    if (!name.trim()) return 'Product B name is required.'
+    return null
+  }
+
+  const validateUrl = (url: string) => {
+    if (!url.trim()) return null; // Allow empty
+    try {
+      new URL(url);
+      return null;
+    } catch {
+      return 'Please enter a valid URL (including https://)';
+    }
+  };
+
+  const validateFormat = (format: string) => {
+    if (!format) return 'Please select a comparison format.';
+    return null;
+  };
+
+  const validateSections = (sections: string[], customSections: string) => {
+    const allSections = [...sections];
+    if (customSections.trim()) {
+      allSections.push(...customSections.split(',').map(s => s.trim()).filter(Boolean));
+    }
+    if (allSections.length === 0) return 'Please select at least one comparison section.';
+    return null;
+  };
 
   const generateSideBySidePrompt = () => {
     const toneDescription = toneOptions.find((t) => t.value === settings.tone)?.label || "neutral"
@@ -129,9 +227,9 @@ export default function ProductComparisonTool() {
 **Product B:** ${productB.name}${productB.url ? ` (${productB.url})` : ""}${productB.description ? `\nDescription: ${productB.description}` : ""}
 
 **Analysis Requirements:**
-- **Tone:** ${toneDescription}
-- **Format:** ${formatDescription}
-- **Layout:** ${layoutDescription}
+- **Analysis Style:** ${toneDescription}
+- **Output Format:** ${formatDescription}
+- **Comparison Layout:** ${layoutDescription}
 ${layoutInstructions}
 
 **Comparison Categories:**
@@ -143,8 +241,8 @@ ${generateDynamicGuidelines(allSections)
   .join("\n")}
 
 **Expected Output Structure:**
-1. Executive Summary (side-by-side overview)
-2. Detailed comparison table/matrix for each category
+1. Executive Summary (${layoutDescription.toLowerCase()} overview)
+2. Detailed comparison ${formatDescription.toLowerCase()} for each category
 3. Key differentiators and unique selling points
 4. Recommendation based on different use cases
 
@@ -235,10 +333,28 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
   }
 
   const generatePrompt = () => {
-    if (!productA.name || !productB.name) {
+    setTouchedA(true)
+    setTouchedB(true)
+    setTouchedAUrl(true)
+    setTouchedBUrl(true)
+    setTouchedFormat(true)
+    setTouchedSections(true)
+    const errorA = validateProductA(productA.name)
+    const errorB = validateProductB(productB.name)
+    const urlErrorA = validateUrl(productA.url)
+    const urlErrorB = validateUrl(productB.url)
+    const formatErr = validateFormat(settings.format)
+    const sectionsErr = validateSections(settings.sections, settings.customSections)
+    setProductAError(errorA)
+    setProductBError(errorB)
+    setProductAUrlError(urlErrorA)
+    setProductBUrlError(urlErrorB)
+    setFormatError(formatErr)
+    setSectionsError(sectionsErr)
+    if (errorA || errorB || urlErrorA || urlErrorB || formatErr || sectionsErr) {
       toast({
-        title: "Missing Information",
-        description: "Please provide names for both products.",
+        title: "Missing or Invalid Information",
+        description: "Please complete all required fields and fix errors before generating a prompt.",
         variant: "destructive",
       })
       return
@@ -249,6 +365,7 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
 
     setGeneratedPrompt(prompt)
     setComparisonPreview(preview)
+    setActiveTab("output")
 
     toast({
       title: "Prompt Generated",
@@ -262,6 +379,7 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
       toast({
         title: "Copied!",
         description: "Prompt copied to clipboard successfully.",
+        variant: "success",
       })
     } catch (err) {
       toast({
@@ -273,11 +391,11 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
   }
 
   const downloadPrompt = () => {
-    const blob = new Blob([generatedPrompt], { type: "text/plain" })
+    const blob = new Blob([generatedPrompt], { type: "text/markdown" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `${productA.name}-vs-${productB.name}-comparison-prompt.txt`
+    a.download = `${productA.name}-vs-${productB.name}-comparison-prompt.md`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -285,123 +403,104 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
 
     toast({
       title: "Downloaded",
-      description: "Prompt saved as text file.",
+      description: "Prompt saved as markdown file.",
     })
   }
 
   const exportToPDF = async () => {
     try {
-      // Dynamic import of jsPDF
       const { jsPDF } = await import("jspdf")
-
       const doc = new jsPDF()
       const pageWidth = doc.internal.pageSize.getWidth()
       const margin = 20
       const maxWidth = pageWidth - margin * 2
+      let yPos = 30
 
       // Title
       doc.setFontSize(20)
-      doc.setFont(undefined, "bold")
-      doc.text(`${productA.name} vs ${productB.name}`, margin, 30)
+      doc.setFont("helvetica", "bold")
+      doc.text(`${productA.name || "Product A"} vs ${productB.name || "Product B"} - Comparison Report`, margin, yPos)
+      yPos += 15
 
-      // Subtitle
-      doc.setFontSize(12)
-      doc.setFont(undefined, "normal")
-      doc.text("Product Comparison Analysis Prompt", margin, 45)
-
-      // Add generation date
+      // Date
       doc.setFontSize(10)
-      doc.text(`Generated on: ${new Date().toLocaleDateString()}`, margin, 55)
+      doc.setFont("helvetica", "normal")
+      doc.text(`Generated on: ${new Date().toLocaleDateString()}`, margin, yPos)
+      yPos += 8
 
       // Settings summary
       doc.setFontSize(12)
-      doc.setFont(undefined, "bold")
-      doc.text("Analysis Settings:", margin, 75)
-
-      doc.setFont(undefined, "normal")
+      doc.setFont("helvetica", "bold")
+      doc.text("Comparison Settings:", margin, yPos)
+      yPos += 8
+      doc.setFont("helvetica", "normal")
       doc.setFontSize(10)
-      let yPos = 85
-      doc.text(`• Tone: ${toneOptions.find((t) => t.value === settings.tone)?.label}`, margin, yPos)
-      yPos += 10
-      doc.text(`• Format: ${formatOptions.find((f) => f.value === settings.format)?.label}`, margin, yPos)
-      yPos += 10
-      doc.text(`• Layout: ${layoutOptions.find((l) => l.value === settings.layout)?.label}`, margin, yPos)
-      yPos += 10
+      doc.text(`• Tone: ${toneOptions.find((t) => t.value === settings.tone)?.label || "Neutral & Objective"}`, margin, yPos)
+      yPos += 6
+      doc.text(`• Format: ${formatOptions.find((f) => f.value === settings.format)?.label || "Markdown"}`, margin, yPos)
+      yPos += 6
+      doc.text(`• Layout: ${layoutOptions.find((l) => l.value === settings.layout)?.label || "Side-by-Side Comparison"}`, margin, yPos)
+      yPos += 6
       doc.text(`• Sections: ${settings.sections.length} categories`, margin, yPos)
-
-      // Product details
-      yPos += 20
-      doc.setFontSize(12)
-      doc.setFont(undefined, "bold")
-      doc.text("Product Details:", margin, yPos)
-
-      yPos += 15
-      doc.setFont(undefined, "bold")
-      doc.setFontSize(11)
-      doc.text(`Product A: ${productA.name}`, margin, yPos)
-
       yPos += 10
-      doc.setFont(undefined, "normal")
-      doc.setFontSize(9)
-      if (productA.url) {
-        doc.text(`URL: ${productA.url}`, margin, yPos)
-        yPos += 8
-      }
-      if (productA.description) {
-        const descLines = doc.splitTextToSize(productA.description, maxWidth)
-        doc.text(descLines, margin, yPos)
-        yPos += descLines.length * 8
-      }
+      doc.setDrawColor(200)
+      doc.line(margin, yPos, pageWidth - margin, yPos)
+      yPos += 8
 
-      yPos += 10
-      doc.setFont(undefined, "bold")
-      doc.setFontSize(11)
-      doc.text(`Product B: ${productB.name}`, margin, yPos)
-
-      yPos += 10
-      doc.setFont(undefined, "normal")
-      doc.setFontSize(9)
-      if (productB.url) {
-        doc.text(`URL: ${productB.url}`, margin, yPos)
-        yPos += 8
-      }
-      if (productB.description) {
-        const descLines = doc.splitTextToSize(productB.description, maxWidth)
-        doc.text(descLines, margin, yPos)
-        yPos += descLines.length * 8
-      }
-
-      // Add new page for the prompt
-      doc.addPage()
-      yPos = 30
-
+      // Main comparison result
       doc.setFontSize(14)
-      doc.setFont(undefined, "bold")
-      doc.text("Generated AI Prompt:", margin, yPos)
-
-      yPos += 15
-      doc.setFont(undefined, "normal")
-      doc.setFontSize(8)
-
-      // Split the prompt into lines that fit the page
-      const promptLines = doc.splitTextToSize(generatedPrompt, maxWidth)
-
-      for (let i = 0; i < promptLines.length; i++) {
-        if (yPos > 270) {
-          // Near bottom of page
-          doc.addPage()
-          yPos = 30
+      doc.setFont("helvetica", "bold")
+      doc.text("Comparison Result", margin, yPos)
+      yPos += 10
+      doc.setFontSize(10)
+      doc.setFont("helvetica", "normal")
+      if (comparisonResult) {
+        // Basic markdown parsing for headings and bold
+        const lines = comparisonResult.split(/\r?\n/)
+        for (let i = 0; i < lines.length; i++) {
+          let line = lines[i].trim()
+          if (line.startsWith("# ")) {
+            doc.setFontSize(16)
+            doc.setFont("helvetica", "bold")
+            line = line.replace(/^# /, "")
+          } else if (line.startsWith("## ")) {
+            doc.setFontSize(13)
+            doc.setFont("helvetica", "bold")
+            line = line.replace(/^## /, "")
+          } else if (line.startsWith("### ")) {
+            doc.setFontSize(12)
+            doc.setFont("helvetica", "bold")
+            line = line.replace(/^### /, "")
+          } else if (/^\*\*.*\*\*$/.test(line)) {
+            doc.setFontSize(11)
+            doc.setFont("helvetica", "bold")
+            line = line.replace(/\*\*/g, "")
+          } else {
+            doc.setFontSize(10)
+            doc.setFont("helvetica", "normal")
+          }
+          if (yPos > 270) {
+            doc.addPage()
+            yPos = 20
+          }
+          doc.text(line, margin, yPos)
+          yPos += 7
         }
-        doc.text(promptLines[i], margin, yPos)
-        yPos += 6
+      } else {
+        doc.text("No comparison result available.", margin, yPos)
       }
+
+      // Footer
+      yPos = 285
+      doc.setFontSize(8)
+      doc.setFont("helvetica", "normal")
+      doc.text("Generated by Product Comparison Tool", margin, yPos)
 
       // Save the PDF
-      doc.save(`${productA.name}-vs-${productB.name}-comparison.pdf`)
-
+      doc.save(`${productA.name || "ProductA"}-vs-${productB.name || "ProductB"}-comparison.pdf`)
       toast({
         title: "PDF Exported",
-        description: "Comparison prompt exported as PDF successfully.",
+        description: "Comparison exported as PDF successfully.",
       })
     } catch (error) {
       toast({
@@ -431,294 +530,436 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-4">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="text-center space-y-2">
-          <h1 className="text-4xl font-bold text-slate-900 flex items-center justify-center gap-2">
-            <Table className="h-8 w-8 text-blue-600" />
-            Side-by-Side Product Comparison Tool
-          </h1>
-          <p className="text-slate-600 text-lg">
-            Generate comprehensive side-by-side AI prompts for comparing any two products
-          </p>
+    <main className="min-h-screen p-8">
+      <div className="max-w-4xl mx-auto">
+        <header className="flex justify-between items-center mb-8">
+          <h1 className="text-3xl font-bold">Product Comparison Tool</h1>
+          {isAuthenticated ? (
+            <div className="flex items-center gap-3">
+              {user?.picture && (
+                <img src={user.picture} alt={user.name} className="w-8 h-8 rounded-full border" />
+              )}
+              <span className="font-medium text-gray-700">{user?.name}</span>
+              <button
+                onClick={logout}
+                className="ml-2 px-3 py-1 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                Logout
+              </button>
+            </div>
+          ) : (
+            <div style={{ minWidth: 120 }} />
+          )}
+        </header>
+        <div className="flex justify-end items-center mb-2 gap-4">
+          <span className="text-green-600 text-xs">Session Parameters Saved</span>
+          <button
+            onClick={clearAutoSave}
+            className="text-xs text-red-600 underline hover:text-red-800"
+            type="button"
+          >
+            Reset Session Parameters
+          </button>
         </div>
 
-        <Tabs defaultValue="products" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="products">Products</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-            <TabsTrigger value="preview">Preview</TabsTrigger>
-            <TabsTrigger value="output">Generated Prompt</TabsTrigger>
-          </TabsList>
+        {isAuthenticated ? (
+          <div className="bg-white rounded-lg shadow p-6 text-center">
+            <h2 className="text-xl font-semibold mb-4">
+              Welcome, {user?.name || 'User'}!
+            </h2>
+            {user?.email && (
+              <p className="text-gray-600 mb-2">{user.email}</p>
+            )}
+            <p className="text-green-600 font-medium mb-4">You are now signed in with Google.</p>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+              <TabsList className="grid w-full grid-cols-5">
+                <TabsTrigger value="products">Products</TabsTrigger>
+                <TabsTrigger value="settings">Compare Options</TabsTrigger>
+                <TabsTrigger value="output">Generated Prompt</TabsTrigger>
+                <TabsTrigger value="compared">Compared</TabsTrigger>
+              </TabsList>
 
-          <TabsContent value="products" className="space-y-6">
-            <div className="grid md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-blue-600">Product A</CardTitle>
-                  <CardDescription>Enter details for the first product</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="productA-name">Product Name *</Label>
-                    <Input
-                      id="productA-name"
-                      placeholder="e.g., Notion"
-                      value={productA.name}
-                      onChange={(e) => setProductA((prev) => ({ ...prev, name: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="productA-url">Website URL</Label>
-                    <Input
-                      id="productA-url"
-                      placeholder="https://www.notion.so"
-                      value={productA.url}
-                      onChange={(e) => setProductA((prev) => ({ ...prev, url: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="productA-description">Brief Description</Label>
-                    <Textarea
-                      id="productA-description"
-                      placeholder="Optional: Brief description or key features"
-                      value={productA.description}
-                      onChange={(e) => setProductA((prev) => ({ ...prev, description: e.target.value }))}
-                      rows={3}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-green-600">Product B</CardTitle>
-                  <CardDescription>Enter details for the second product</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="productB-name">Product Name *</Label>
-                    <Input
-                      id="productB-name"
-                      placeholder="e.g., Evernote"
-                      value={productB.name}
-                      onChange={(e) => setProductB((prev) => ({ ...prev, name: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="productB-url">Website URL</Label>
-                    <Input
-                      id="productB-url"
-                      placeholder="https://www.evernote.com"
-                      value={productB.url}
-                      onChange={(e) => setProductB((prev) => ({ ...prev, url: e.target.value }))}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="productB-description">Brief Description</Label>
-                    <Textarea
-                      id="productB-description"
-                      placeholder="Optional: Brief description or key features"
-                      value={productB.description}
-                      onChange={(e) => setProductB((prev) => ({ ...prev, description: e.target.value }))}
-                      rows={3}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="settings" className="space-y-6">
-            <div className="grid md:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Analysis Style</CardTitle>
-                  <CardDescription>Customize the tone, format, and layout of your comparison</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Comparison Layout</Label>
-                    <Select
-                      value={settings.layout}
-                      onValueChange={(value) => setSettings((prev) => ({ ...prev, layout: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {layoutOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Tone</Label>
-                    <Select
-                      value={settings.tone}
-                      onValueChange={(value) => setSettings((prev) => ({ ...prev, tone: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {toneOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Output Format</Label>
-                    <Select
-                      value={settings.format}
-                      onValueChange={(value) => setSettings((prev) => ({ ...prev, format: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {formatOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Comparison Sections</CardTitle>
-                  <CardDescription>Select which aspects to compare side-by-side</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 gap-3 max-h-64 overflow-y-auto">
-                    {defaultSections.map((section) => (
-                      <div key={section} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={section}
-                          checked={settings.sections.includes(section)}
-                          onCheckedChange={(checked) => handleSectionToggle(section, checked as boolean)}
+              <TabsContent value="products" className="space-y-6">
+                <div className="grid md:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-blue-600">Product A</CardTitle>
+                      <CardDescription>Enter details for the first product</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="productA-name">Product Name *</Label>
+                        <Input
+                          id="productA-name"
+                          placeholder="e.g., Notion"
+                          value={productA.name}
+                          onChange={(e) => {
+                            setProductA((prev) => ({ ...prev, name: e.target.value }))
+                            setProductAError(validateProductA(e.target.value))
+                          }}
+                          onBlur={() => {
+                            setTouchedA(true)
+                            setProductAError(validateProductA(productA.name))
+                          }}
+                          required
                         />
-                        <Label htmlFor={section} className="text-sm font-normal">
-                          {section}
-                        </Label>
+                        {touchedA && productAError && (
+                          <div className="text-red-600 text-xs mt-1">{productAError}</div>
+                        )}
                       </div>
-                    ))}
+                      <div className="space-y-2">
+                        <Label htmlFor="productA-url">Website URL</Label>
+                        <Input
+                          id="productA-url"
+                          placeholder="https://www.notion.so"
+                          value={productA.url}
+                          onChange={(e) => {
+                            setProductA((prev) => ({ ...prev, url: e.target.value }))
+                            setProductAUrlError(validateUrl(e.target.value))
+                          }}
+                          onBlur={() => {
+                            setTouchedAUrl(true)
+                            setProductAUrlError(validateUrl(productA.url))
+                          }}
+                        />
+                        {touchedAUrl && productAUrlError && (
+                          <div className="text-red-600 text-xs mt-1">{productAUrlError}</div>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="productA-description">Brief Description</Label>
+                        <Textarea
+                          id="productA-description"
+                          placeholder="Optional: Brief description or key features"
+                          value={productA.description}
+                          onChange={(e) => setProductA((prev) => ({ ...prev, description: e.target.value }))}
+                          rows={3}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-green-600">Product B</CardTitle>
+                      <CardDescription>Enter details for the second product</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="productB-name">Product Name *</Label>
+                        <Input
+                          id="productB-name"
+                          placeholder="e.g., Evernote"
+                          value={productB.name}
+                          onChange={(e) => {
+                            setProductB((prev) => ({ ...prev, name: e.target.value }))
+                            setProductBError(validateProductB(e.target.value))
+                          }}
+                          onBlur={() => {
+                            setTouchedB(true)
+                            setProductBError(validateProductB(productB.name))
+                          }}
+                          required
+                        />
+                        {touchedB && productBError && (
+                          <div className="text-red-600 text-xs mt-1">{productBError}</div>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="productB-url">Website URL</Label>
+                        <Input
+                          id="productB-url"
+                          placeholder="https://www.evernote.com"
+                          value={productB.url}
+                          onChange={(e) => {
+                            setProductB((prev) => ({ ...prev, url: e.target.value }))
+                            setProductBUrlError(validateUrl(e.target.value))
+                          }}
+                          onBlur={() => {
+                            setTouchedBUrl(true)
+                            setProductBUrlError(validateUrl(productB.url))
+                          }}
+                        />
+                        {touchedBUrl && productBUrlError && (
+                          <div className="text-red-600 text-xs mt-1">{productBUrlError}</div>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="productB-description">Brief Description</Label>
+                        <Textarea
+                          id="productB-description"
+                          placeholder="Optional: Brief description or key features"
+                          value={productB.description}
+                          onChange={(e) => setProductB((prev) => ({ ...prev, description: e.target.value }))}
+                          rows={3}
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="settings" className="space-y-6">
+                <div className="grid md:grid-cols-2 gap-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Analysis Style</CardTitle>
+                      <CardDescription>Customize the tone, format, and layout of your comparison</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Comparison Layout</Label>
+                        <Select
+                          value={settings.layout}
+                          onValueChange={(value) => setSettings((prev) => ({ ...prev, layout: value }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {layoutOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Tone</Label>
+                        <Select
+                          value={settings.tone}
+                          onValueChange={(value) => setSettings((prev) => ({ ...prev, tone: value }))}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {toneOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Output Format</Label>
+                        <Select
+                          value={settings.format}
+                          onValueChange={(value) => {
+                            setSettings((prev) => ({ ...prev, format: value }));
+                            setFormatError(validateFormat(value));
+                          }}
+                          required
+                        >
+                          <SelectTrigger
+                            onBlur={() => {
+                              setTouchedFormat(true);
+                              setFormatError(validateFormat(settings.format));
+                            }}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {formatOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {touchedFormat && formatError && (
+                          <div className="text-red-600 text-xs mt-1">{formatError}</div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Comparison Sections</CardTitle>
+                      <CardDescription>Select which aspects to compare side-by-side</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-1 gap-3 max-h-64 overflow-y-auto">
+                        {defaultSections.map((section) => (
+                          <div key={section} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={section}
+                              checked={settings.sections.includes(section)}
+                              onCheckedChange={(checked) => handleSectionToggle(section, checked as boolean)}
+                            />
+                            <Label htmlFor={section} className="text-sm font-normal">
+                              {section}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                      <Separator />
+                      <div className="space-y-2">
+                        <Label htmlFor="custom-sections">Custom Sections</Label>
+                        <Textarea
+                          id="custom-sections"
+                          placeholder="Add custom sections (comma-separated)"
+                          value={settings.customSections}
+                          onChange={(e) => setSettings((prev) => ({ ...prev, customSections: e.target.value }))}
+                          rows={2}
+                        />
+                      </div>
+                      {touchedSections && sectionsError && (
+                        <div className="text-red-600 text-xs mt-1">{sectionsError}</div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+                <div className="flex justify-center gap-4 pt-6">
+                  <Button onClick={generatePrompt} size="lg" className="px-8">
+                    <Table className="h-4 w-4 mr-2" />
+                    Generate Prompt
+                  </Button>
+                  <Button onClick={resetForm} variant="outline" size="lg">
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Reset Form
+                  </Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="output" className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Generated Side-by-Side Comparison Prompt</CardTitle>
+                    <CardDescription>
+                      {generatedPrompt ? "Your AI prompt is ready to use" : "Generate a prompt to see the output here"}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {generatedPrompt ? (
+                      <div className="space-y-4">
+                        <div className="flex gap-2 flex-wrap">
+                          <Badge variant="secondary">
+                            {settings.sections.length + settings.customSections.split(",").filter((s) => s.trim()).length} sections
+                          </Badge>
+                          <Badge variant="outline">{settings.layout}</Badge>
+                          <Badge variant="outline">{settings.tone}</Badge>
+                          <Badge variant="outline">{settings.format}</Badge>
+                        </div>
+                        <div className="bg-slate-50 rounded-lg p-4 border max-h-96 overflow-y-auto">
+                          <pre className="whitespace-pre-wrap text-sm text-slate-700 font-mono">{generatedPrompt}</pre>
+                        </div>
+                        <div className="flex gap-2 flex-wrap justify-between">
+                          <div className="flex gap-2 flex-wrap">
+                            <Button onClick={copyToClipboard} variant="default">
+                              <Copy className="h-4 w-4 mr-2" />
+                              Copy Prompt
+                            </Button>
+                            <Button onClick={downloadPrompt} variant="outline">
+                              <Download className="h-4 w-4 mr-2" />
+                              Download MD
+                            </Button>
+                          </div>
+                          <Button
+                            onClick={async () => {
+                              setCompareLoading(true);
+                              setCompareError(null);
+                              setActiveTab("compared");
+                              try {
+                                const res = await fetch("/api/compare", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ prompt: generatedPrompt }),
+                                });
+                                const data = await res.json();
+                                if (!res.ok) throw new Error(data.error || "Unknown error");
+                                setComparisonResult(data.result);
+                              } catch (err: any) {
+                                setCompareError(err.message || "Failed to generate comparison. Please try again.");
+                              } finally {
+                                setCompareLoading(false);
+                              }
+                            }}
+                            variant="default"
+                            disabled={!generatedPrompt || compareLoading}
+                            className="ml-auto"
+                          >
+                            {compareLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Table className="h-4 w-4 mr-2" />}
+                            Compare
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 text-slate-500">
+                        <Sparkles className="h-12 w-12 mx-auto mb-4 text-slate-300" />
+                        <p>Generate your side-by-side comparison prompt to see it here</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="compared" className="space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Compared Output</CardTitle>
+                    <CardDescription>
+                      {compareLoading ? "Generating comparison..." : "This is the AI-generated comparison based on your prompt."}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {compareLoading ? (
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <Loader2 className="animate-spin h-8 w-8 mb-4 text-blue-500" />
+                        <span className="text-blue-600">Generating comparison...</span>
+                      </div>
+                    ) : compareError ? (
+                      <div className="text-red-600 text-center py-8">{compareError}</div>
+                    ) : comparisonResult ? (
+                      <div className="prose max-w-none bg-slate-50 p-6 rounded-lg border shadow-sm">
+                        <h2 className="text-2xl font-bold mb-2">{productA.name} vs {productB.name} - Compared Output</h2>
+                        <ReactMarkdown>{comparisonResult}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 text-slate-500">
+                        <Sparkles className="h-12 w-12 mx-auto mb-4 text-slate-300" />
+                        <p>Click Compare to generate your AI-powered comparison here.</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+                {comparisonResult && (
+                  <div className="flex justify-center mb-4">
+                    <Button
+                      onClick={exportToPDF}
+                      variant="default"
+                      className="px-6 py-2 text-white bg-blue-600 hover:bg-blue-700"
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Export PDF
+                    </Button>
                   </div>
-                  <Separator />
-                  <div className="space-y-2">
-                    <Label htmlFor="custom-sections">Custom Sections</Label>
-                    <Textarea
-                      id="custom-sections"
-                      placeholder="Add custom sections (comma-separated)"
-                      value={settings.customSections}
-                      onChange={(e) => setSettings((prev) => ({ ...prev, customSections: e.target.value }))}
-                      rows={2}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
+                )}
+              </TabsContent>
+            </Tabs>
+          </div>
+        ) : (
+          <div className="bg-white rounded-lg shadow p-6 text-center">
+            <h2 className="text-xl font-semibold mb-4">
+              Sign in to Start Comparing
+            </h2>
+            <p className="text-gray-600 mb-4">
+              Please sign in with your Google account to access the product comparison tool.
+            </p>
+            {authError && (
+              <div className="text-red-600 text-sm mb-2" role="alert">
+                {authError}
+              </div>
+            )}
+            <div className="flex justify-center">
+              <LoginButton />
             </div>
-          </TabsContent>
-
-          <TabsContent value="preview" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Comparison Preview</CardTitle>
-                <CardDescription>Preview of how your side-by-side comparison will be structured</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {productA.name && productB.name ? (
-                  <div className="bg-slate-50 rounded-lg p-6 border">
-                    <div className="prose prose-sm max-w-none">
-                      <pre className="whitespace-pre-wrap text-sm text-slate-700 font-mono bg-white p-4 rounded border">
-                        {comparisonPreview || generateComparisonPreview()}
-                      </pre>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-slate-500">
-                    <Table className="h-12 w-12 mx-auto mb-4 text-slate-300" />
-                    <p>Enter product names to see the comparison preview</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="output" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Generated Side-by-Side Comparison Prompt</CardTitle>
-                <CardDescription>
-                  {generatedPrompt ? "Your AI prompt is ready to use" : "Generate a prompt to see the output here"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {generatedPrompt ? (
-                  <div className="space-y-4">
-                    <div className="flex gap-2 flex-wrap">
-                      <Badge variant="secondary">
-                        {settings.sections.length + settings.customSections.split(",").filter((s) => s.trim()).length}{" "}
-                        sections
-                      </Badge>
-                      <Badge variant="outline">{settings.layout}</Badge>
-                      <Badge variant="outline">{settings.tone}</Badge>
-                      <Badge variant="outline">{settings.format}</Badge>
-                    </div>
-                    <div className="bg-slate-50 rounded-lg p-4 border max-h-96 overflow-y-auto">
-                      <pre className="whitespace-pre-wrap text-sm text-slate-700 font-mono">{generatedPrompt}</pre>
-                    </div>
-                    <div className="flex gap-2 flex-wrap">
-                      <Button onClick={copyToClipboard} variant="default">
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copy Prompt
-                      </Button>
-                      <Button onClick={downloadPrompt} variant="outline">
-                        <Download className="h-4 w-4 mr-2" />
-                        Download TXT
-                      </Button>
-                      <Button
-                        onClick={exportToPDF}
-                        variant="outline"
-                        className="bg-red-50 hover:bg-red-100 text-red-700 border-red-200"
-                      >
-                        <FileText className="h-4 w-4 mr-2" />
-                        Export PDF
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-slate-500">
-                    <Sparkles className="h-12 w-12 mx-auto mb-4 text-slate-300" />
-                    <p>Generate your side-by-side comparison prompt to see it here</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        <div className="flex justify-center gap-4 pt-6">
-          <Button onClick={generatePrompt} size="lg" className="px-8">
-            <Table className="h-4 w-4 mr-2" />
-            Generate Side-by-Side Prompt
-          </Button>
-          <Button onClick={resetForm} variant="outline" size="lg">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Reset Form
-          </Button>
-        </div>
+          </div>
+        )}
       </div>
-    </div>
+    </main>
   )
 }

@@ -1,0 +1,1 @@
+Now take @MyFeature-PRD.md and create tasks using @generate-tasks-from-prd.mdc
