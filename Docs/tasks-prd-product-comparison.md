@@ -72,9 +72,9 @@
 
 - [ ] 3.0 PDF Generation & Email Delivery
   - [ ] 3.1 Implement PDF generation
-    - [>] 3.1.1 Create PDF template
-    - [ ] 3.1.2 Add content formatting
-    - [ ] 3.1.3 Implement filename generation
+    - [x] 3.1.1 Create PDF template
+    - [x] 3.1.2 Add content formatting
+    - [x] 3.1.3 Implement filename generation
   - [ ] 3.2 Create email system
     - [ ] 3.2.1 Set up email service
     - [ ] 3.2.2 Create email templates

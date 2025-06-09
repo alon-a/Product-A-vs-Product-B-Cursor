@@ -533,7 +533,7 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
     <main className="min-h-screen p-8">
       <div className="max-w-4xl mx-auto">
         <header className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Product Comparison Tool</h1>
+          <h1 className="main-heading">Product Comparison Tool</h1>
           {isAuthenticated ? (
             <div className="flex items-center gap-3">
               {user?.picture && (
@@ -551,16 +551,18 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
             <div style={{ minWidth: 120 }} />
           )}
         </header>
-        <div className="flex justify-end items-center mb-2 gap-4">
-          <span className="text-green-600 text-xs">Session Parameters Saved</span>
-          <button
-            onClick={clearAutoSave}
-            className="text-xs text-red-600 underline hover:text-red-800"
-            type="button"
-          >
-            Reset Session Parameters
-          </button>
-        </div>
+        {isAuthenticated && (
+          <div className="flex justify-end items-center mb-2 gap-4">
+            <span className="text-green-600 text-xs">Session Parameters Saved</span>
+            <button
+              onClick={clearAutoSave}
+              className="text-xs text-red-600 underline hover:text-red-800"
+              type="button"
+            >
+              Reset Session Parameters
+            </button>
+          </div>
+        )}
 
         {isAuthenticated ? (
           <div className="bg-white rounded-lg shadow p-6 text-center">
@@ -602,6 +604,7 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
                             setProductAError(validateProductA(productA.name))
                           }}
                           required
+                          className="input"
                         />
                         {touchedA && productAError && (
                           <div className="text-red-600 text-xs mt-1">{productAError}</div>
@@ -621,6 +624,7 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
                             setTouchedAUrl(true)
                             setProductAUrlError(validateUrl(productA.url))
                           }}
+                          className="input"
                         />
                         {touchedAUrl && productAUrlError && (
                           <div className="text-red-600 text-xs mt-1">{productAUrlError}</div>
@@ -634,6 +638,7 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
                           value={productA.description}
                           onChange={(e) => setProductA((prev) => ({ ...prev, description: e.target.value }))}
                           rows={3}
+                          className="textarea"
                         />
                       </div>
                     </CardContent>
@@ -660,6 +665,7 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
                             setProductBError(validateProductB(productB.name))
                           }}
                           required
+                          className="input"
                         />
                         {touchedB && productBError && (
                           <div className="text-red-600 text-xs mt-1">{productBError}</div>
@@ -679,6 +685,7 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
                             setTouchedBUrl(true)
                             setProductBUrlError(validateUrl(productB.url))
                           }}
+                          className="input"
                         />
                         {touchedBUrl && productBUrlError && (
                           <div className="text-red-600 text-xs mt-1">{productBUrlError}</div>
@@ -692,6 +699,7 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
                           value={productB.description}
                           onChange={(e) => setProductB((prev) => ({ ...prev, description: e.target.value }))}
                           rows={3}
+                          className="textarea"
                         />
                       </div>
                     </CardContent>
@@ -805,6 +813,7 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
                           value={settings.customSections}
                           onChange={(e) => setSettings((prev) => ({ ...prev, customSections: e.target.value }))}
                           rows={2}
+                          className="textarea"
                         />
                       </div>
                       {touchedSections && sectionsError && (
@@ -814,13 +823,13 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
                   </Card>
                 </div>
                 <div className="flex justify-center gap-4 pt-6">
-                  <Button onClick={generatePrompt} size="lg" className="px-8">
-                    <Table className="h-4 w-4 mr-2" />
-                    Generate Prompt
-                  </Button>
-                  <Button onClick={resetForm} variant="outline" size="lg">
+                  <Button onClick={resetForm} variant="outline" size="lg" className="accent-btn">
                     <RefreshCw className="h-4 w-4 mr-2" />
                     Reset Form
+                  </Button>
+                  <Button onClick={generatePrompt} size="lg" className="accent-btn">
+                    <Table className="h-4 w-4 mr-2" />
+                    Generate Prompt
                   </Button>
                 </div>
               </TabsContent>
@@ -931,7 +940,7 @@ Please ensure the comparison is thorough, balanced, and presented in a format th
                     <Button
                       onClick={exportToPDF}
                       variant="default"
-                      className="px-6 py-2 text-white bg-blue-600 hover:bg-blue-700"
+                      className="accent-btn"
                     >
                       <FileText className="h-4 w-4 mr-2" />
                       Export PDF
